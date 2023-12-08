@@ -1,0 +1,115 @@
+import pandas as pd
+from datetime import datetime, timedelta
+
+def text_dataframe(file_path):
+    file = open(file_path, 'r')
+    file_read = file.read()
+    file_df = pd.DataFrame([x.split('   ') for x in file_read.split('\n')])
+    file_df = file_df.iloc[7:]
+    file_df = file_df.iloc[:-10]  # Remove index[0-7], Remove final 10 (for LA, CHI, DAL)
+    file_df = file_df[0].str.split('\t', expand=True)
+    file_df = file_df.loc[(file_df[4].str.contains('deposit', case = False) == False)]
+    file_df[6] = file_df[6].astype(float)
+    return file_df
+
+def amount(final):
+    amounts = abs(final[6])
+    return amounts
+
+def entry_date(date):
+    day_delta = timedelta(days = 1)
+    if isinstance(date[1], str):
+        d_date = datetime.strptime(date[1], '%m/%d/%Y')
+    else:
+        d_date = date[1]
+    e_date = d_date + day_delta
+    e_date = e_date.strftime("%m/%d/%Y")
+    return e_date
+
+def value_date(date):
+    if isinstance(date[1], str):
+        d_date = datetime.strptime(date[1], '%m/%d/%Y')
+    else:
+        d_date = date[1]
+    d_date = d_date.strftime("%m/%d/%Y")
+    return d_date
+
+def balance(account):
+    if(account[2] == 'LBX-MAN-DALBX-C'):
+        return '-500.00'
+    elif(account[2] == 'LBX-MAN-CHLBX-C'):
+        return '-250.00'
+    elif(account[2] == 'LBX-MAN-LALBX-C'):
+        return '-200.00'
+    elif(account[2] == 'LBX-MAN-PGLBX-C'):
+        return '0.00'
+
+def dep_chk(fund):
+    if(fund[4] == 'DEPOSIT'):
+        return 'DEP'
+    else:
+        return 'CHK'
+
+def d_c(fund):
+    if(fund[4] == 'DEPOSIT'):
+        return 'D'
+    else:
+        return 'C'
+
+def final_icft(file):
+    icft = pd.DataFrame([['Message Feed ID', 'Opening Bal Date', 'Opening Bal Currency', 'Opening Bal', 'Closing Bal Date', 'Closing Bal Currency', 'Closing Bal', 'Entry Date', 'Value Date', 'Amount', 'Currency', 'Transaction Code', 'Asset', 'Asset Description', 'Deal Quantity', 'Price', 'Price Currency', 'Related Reference', 'Sign', 'REF1', 'REF2', 'REF3', 'Custom Date 1', 'Custom Date 2', 'Custom Date 3', 'Custom Date 4', 'Custom Date 5', 'Custom Amount 1', 'Custom Amount 2', 'Custom Amount 3', 'Custom Amount 4', 'Custom Amount 5']])
+    for index, row in file.iterrows():
+        icft = icft._append({0: row[2], 1: row[1], 2: 'USD',3: row[8], 4: row[1], 5: 'USD', 6: row[8], 7: row[7], 8: row[1], 9: row[6], 10: 'USD', 11: row[9], 18: row[10], 19: row[4], 20: row[3], 21: row[5]}, ignore_index=True)
+    return icft
+
+file_la = text_dataframe(r"C:\Users\ADCCYW9\Downloads\Automation Files\ICFT\12.08\la.txt")
+file_chi = text_dataframe(r"C:\Users\ADCCYW9\Downloads\Automation Files\ICFT\12.08\chi.txt")
+file_chi[4] = file_chi[4].str.replace('*', '')
+file_dal = text_dataframe(r"C:\Users\ADCCYW9\Downloads\Automation Files\ICFT\12.08\dal.txt")
+file_combined = pd.concat([file_chi, file_dal, file_la], axis = 0)
+file_deposit = file_combined.groupby([2]).agg({1 : 'max', 2 : 'max', 6 : 'sum'})
+file_combined = pd.concat([file_combined, file_deposit], axis = 0).fillna('')
+file_combined.reset_index(drop = True, inplace = True)
+file_combined[4] = file_combined[4].replace('', 'DEPOSIT')
+file_combined[6] = file_combined.apply(amount, axis = 1)
+file_combined[6] = file_combined[6].map(lambda x: '{:.2f}'.format(x))
+file_combined[2] = file_combined[2].replace({'US Bank Cash Account':'LBX-MAN-CHLBX-C', 'BOA Cash Account':'LBX-MAN-DALBX-C', 'B of A Checking':'LBX-MAN-LALBX-C'})
+file_combined[5] = file_combined[5].astype(str)
+file_combined[7] = file_combined.apply(entry_date, axis = 1)
+file_combined[1] = file_combined.apply(value_date, axis = 1)
+file_combined[8] = file_combined.apply(balance, axis = 1)
+file_combined[9] = file_combined.apply(dep_chk, axis = 1)
+file_combined[10] = file_combined.apply(d_c, axis = 1)
+
+icft_combined = final_icft(file_combined)
+for col in icft_combined.columns:
+    icft_combined[col] = icft_combined[col].str.replace(',', '')
+print(icft_combined)
+
+icft_combined.to_excel(r"C:\Users\ADCCYW9\Downloads\Automation Files\ICFT\12.08\ICFT_COMBINED.xlsx", sheet_name = 'ICFT', index = False, header = False)
+
+file_pitt = pd.read_excel(r"C:\Users\ADCCYW9\Downloads\Automation Files\ICFT\12.08\Cash 12-7-2023 (FNB).xlsx", header = None)
+file_pitt = file_pitt.iloc[8:]
+file_pitt = file_pitt.iloc[:-9]  # Remove index[0-8], Remove final 9 (for PITT)
+file_pitt = file_pitt.fillna('')
+file_pitt.reset_index(drop = True, inplace = True)
+file_pitt[6] = file_pitt[6].astype(float)
+file_pitt[5] = file_pitt[5].astype(str)
+file_pitt[4] = file_pitt[4].replace('', 'DEPOSIT')
+file_pitt[3] = file_pitt[3].replace('DEP', '')
+file_pitt[6] = file_pitt.apply(amount, axis = 1)
+file_pitt[6] = file_pitt[6].map(lambda x: '{:.2f}'.format(x))
+file_pitt[2] = file_pitt[2].replace({'FNB account':'LBX-MAN-PGLBX-C'})
+file_pitt[7] = file_pitt.apply(entry_date, axis = 1)
+file_pitt[1] = file_pitt.apply(value_date, axis = 1)
+file_pitt[8] = file_pitt.apply(balance, axis = 1)
+file_pitt[9] = file_pitt.apply(dep_chk, axis = 1)
+file_pitt[10] = file_pitt.apply(d_c, axis = 1)
+
+icft_pitt = final_icft(file_pitt)
+for col in icft_pitt.columns:
+    icft_pitt[col] = icft_pitt[col].str.replace(',', '')
+
+print(icft_pitt)
+
+icft_pitt.to_excel(r"C:\Users\ADCCYW9\Downloads\Automation Files\ICFT\12.08\ICFT_PITT.xlsx", sheet_name = 'ICFT', index = False, header = False)
